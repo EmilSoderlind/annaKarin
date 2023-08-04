@@ -3,9 +3,24 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npm-run-all --parallel frontend:start backend:start",
+    "frontend:start": "cd frontend && npm start",
+    "backend:start": "cd backend && npm start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EmilSoderlind/annaKarin.git"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/EmilSoderlind/annaKarin/issues"
+  },
+  "homepage": "https://github.com/EmilSoderlind/annaKarin#readme"
 }
