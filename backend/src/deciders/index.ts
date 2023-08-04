@@ -1,21 +1,18 @@
 import { fetchData } from '../fetchData'
-import { decide } from './dumb'
+import { StockDataPoint, Decision, DeciderModule } from '../types'
+import dumb from './dumb'
+import dumb2 from './dumb2'
+import random_guy from './random_guy'
 
-const deciders = {
-  dumb: decide,
-}
+type deciderFunctionType = (data: StockDataPoint[]) => Decision[]
 
-export const runDecider = async () => {
-  const deciderFunction = deciders['dumb']
-
+export const runDecider = (decider: DeciderModule, stockData: StockDataPoint[]) => {
   let fiatCredits = 10000
   let stockCount = 10
   let buyCount = 0
   let sellCount = 0
 
-  const stockData = await fetchData('spot')
-
-  const decisions = deciderFunction(stockData)
+  const decisions = decider.decide(stockData)
 
   decisions.map((decision, index) => {
     const currentAveragePrice = stockData[index].average
@@ -23,14 +20,18 @@ export const runDecider = async () => {
     const gotCashToBuy = currentAveragePrice <= fiatCredits
     const gotStockToSell = stockCount > 0
 
-    const currentData = { fiatCredits, stockCount, stockData: stockData[index].average }
+    const currentData = {
+      fiatCredits: parseFloat(fiatCredits.toFixed(2)),
+      stockCount,
+      stockData: stockData[index].average,
+    }
 
     if (gotCashToBuy && decision === 'buy') {
       fiatCredits = fiatCredits - currentAveragePrice
       stockCount += 1
       buyCount += 1
 
-      console.log('🤖 Im buying!', currentData)
+      console.log(decider.name + ' 🤖 Im buying!', currentData)
       return
     }
 
@@ -39,25 +40,50 @@ export const runDecider = async () => {
       stockCount -= 1
       sellCount += 1
 
-      console.log('🤖 Im selling!', currentData)
+      console.log(decider.name + ' 🤖 Im selling!', currentData)
       return
     }
 
     if (decision === 'wait') {
-      console.log('🤖 Im waiting!', currentData)
+      console.log(decider.name + ' 🤖 Im waiting!', currentData)
       return
     }
 
-    throw Error(`Seems to be something wrong here ${{ currentData, decision, fiatCredits, stockCount }}`)
+    if (!gotStockToSell && decision === 'sell') {
+      console.log(decider.name + ' 🤖 Want to sell, but got no stocks to sell')
+      return
+    }
+
+    if (!gotCashToBuy && decision === 'buy') {
+      console.log(decider.name + ' 🤖 Want to buy, but got no money')
+      return
+    }
+
+    throw Error(
+      `${decider.name} - Seems to be something wrong here ${{ currentData, decision, fiatCredits, stockCount }}`,
+    )
   })
 
-  console.log('BEFORE: ', { fiatCredits, stockCount, total: fiatCredits + stockCount * stockData[0].average })
+  const initialTotal = fiatCredits + stockCount * stockData[0].average
+  const finalTotal = fiatCredits + stockCount * stockData[stockData.length - 1].average
 
-  console.log('AFTER: ', {
-    fiatCredits,
-    stockCount,
-    total: fiatCredits + stockCount * stockData[stockData.length - 1].average,
-    buyCount,
-    sellCount,
-  })
+  return {
+    initial: { fiatCredits, stockCount, total: initialTotal },
+    final: {
+      fiatCredits,
+      stockCount,
+      total: finalTotal,
+    },
+    delta: finalTotal - initialTotal,
+  }
+}
+
+const deciders = [dumb, dumb2, random_guy]
+
+export const runAllDeciders = async () => {
+  const stockData = await fetchData('spot', '5min')
+  console.log('🚀 ~ runAllDeciders ~ stockData:', stockData)
+
+  const res = deciders.map((decider) => ({ decisions: runDecider(decider, stockData), name: decider.name }))
+  console.log('🚀 ~ runAllDeciders ~ res:', res, null, 4)
 }

@@ -1,18 +1,11 @@
-import { runAPI } from './api'
-import { runDecider } from './deciders'
-import { fetchData } from './fetchData'
+import { runAllDeciders } from './deciders'
 
 require('dotenv').config()
 
 const main = async () => {
-  console.log('Initiating annaKarin robot 🤖')
-  // const points = await fetchData('AAPL')
-  // const allButLast = points.slice(0, points.length - 1)
-  // const last = points[points.length - 1]
-  // console.log('🚀 ~ main ~ allButLast:', allButLast.length)
-  // console.log('🚀 ~ main ~ last:', last)
+  console.log('Initiating Anna-Karin robot 🤖')
 
-  await runDecider()
+  await runAllDeciders()
 }
 
 main()

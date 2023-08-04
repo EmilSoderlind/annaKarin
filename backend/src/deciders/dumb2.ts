@@ -1,20 +1,16 @@
 import { StockDataPoint, Decision } from '../types'
 
 const decide = (data: StockDataPoint[]): Decision[] => {
-  console.log('🚀 ~ decide ~ data:', data)
   const decisions: Decision[] = []
 
   for (let i = 0; i < data.length; i++) {
-    const { open, close, average } = data[i]
+    const { average } = data[i]
 
-    if (open < average) {
-      // Buy decision
-      decisions.push('buy')
-    } else if (close > average) {
-      // Sell decision
+    if (i > 5 && data[i - 5].average < average) {
       decisions.push('sell')
+    } else if (i > 5 && data[i - 5].average > average) {
+      decisions.push('buy')
     } else {
-      // Wait decision
       decisions.push('wait')
     }
   }
@@ -22,6 +18,6 @@ const decide = (data: StockDataPoint[]): Decision[] => {
   return decisions
 }
 
-const name = 'dumb'
+const name = 'dumb2'
 
 export default { decide, name }

@@ -1,88 +1,82 @@
 import axios from 'axios'
+import sqlite3 from 'sqlite3'
+import { AlphaStockData, Interval, StockDataPoint } from '../types'
 
 const API_KEY = process.env.ALPHA_VANTAGE_API_KEY
 
-type rawStockDataPoint = {
-  date: string
-  open: number
-  high: number
-  low: number
-  close: number
-  volume?: number
-}
+const dbFile = 'cache.db' // Specify the file path for the database
+const db = new sqlite3.Database(dbFile)
 
-export type stockDataPoint = {
-  date: string
-  open: number
-  high: number
-  low: number
-  close: number
-  average: number
-}
+db.serialize(() => {
+  db.run('CREATE TABLE IF NOT EXISTS cache (url TEXT PRIMARY KEY, data TEXT, timestamp INTEGER)')
+})
 
-export const fetchData = async (symbol: string): Promise<stockDataPoint[]> => {
-  const response = await axios.get(
-    `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=${symbol}&interval=${interval}&apikey=${API_KEY}`,
-  )
+export const fetchData = async (symbol: string, interval: Interval = '1min'): Promise<StockDataPoint[]> => {
+  const currentTime = Math.floor(Date.now() / 1000)
 
-  const data = response.data as AlphaStockData
-  const timeSeries = getTimeSeriesByInterval(data, interval)
+  try {
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=${symbol}&interval=${interval}`
 
-  // const timeSeries = dummyTimeSeries
+    const row = await new Promise<any>((resolve, reject) => {
+      db.get('SELECT data, timestamp FROM cache WHERE url = ?', [url], (err: Error | null, row: any) => {
+        if (err) {
+          console.error('Error fetching data from cache:', err.message)
+          reject(err)
+        }
+        resolve(row)
+      })
+    })
 
-  const dataPoints = Object.entries(timeSeries).map(([date, values]) => ({
-    date,
-    open: Number(values['1. open']),
-    high: Number(values['2. high']),
-    low: Number(values['3. low']),
-    close: Number(values['4. close']),
-    volume: Number(values['5. volume']),
-  }))
+    if (row) {
+      // Data is available in the cache and not expired
+      console.log('Cache hit for url:', url)
+      const data = JSON.parse(row.data)
+      return data
+    } else {
+      console.log('No cache hit for url, make API call', url)
 
-  return _parseData(dataPoints)
-}
+      // Data not found in the cache or expired, make an API call
+      const response = await axios.get(`${url}&apikey=${API_KEY}`)
 
-const _parseData = (data: rawStockDataPoint[]): stockDataPoint[] => {
-  const res = data
-    .map((val) => ({ ...val, average: parseFloat(((val.open + val.close + val.low + val.close) / 4).toFixed(2)) }))
-    .sort((a, b) => (a.date > b.date ? 1 : -1))
-  return res
+      const data = response.data as AlphaStockData
+      const timeSeries = getTimeSeriesByInterval(data, interval)
+
+      const dataPoints = Object.entries(timeSeries)
+        .map(([date, values]) => ({
+          date,
+          open: Number(values['1. open']),
+          high: Number(values['2. high']),
+          low: Number(values['3. low']),
+          close: Number(values['4. close']),
+          volume: Number(values['5. volume']),
+        }))
+        .map((val) => ({ ...val, average: parseFloat(((val.open + val.close + val.low + val.close) / 4).toFixed(2)) }))
+        .sort((a, b) => (a.date > b.date ? 1 : -1))
+
+      // Cache the data in the database
+      await new Promise<void>((resolve, reject) => {
+        db.run(
+          'INSERT OR REPLACE INTO cache (url, data, timestamp) VALUES (?, ?, ?)',
+          [url, JSON.stringify(dataPoints), currentTime],
+          (err: Error | null) => {
+            if (err) {
+              console.error('Error caching data:', err.message)
+              reject(err)
+            }
+            resolve()
+          },
+        )
+      })
+
+      return dataPoints
+    }
+  } catch (error) {
+    console.error('Error fetching data:', error)
+    throw error
+  }
 }
 
 const interval: Interval = '5min'
-
-type Interval = '1min' | '5min' | '15min' | '30min' | '60min'
-
-interface AlphaTimeSeriesEntry {
-  '1. open': string
-  '2. high': string
-  '3. low': string
-  '4. close': string
-  '5. volume': string
-}
-
-interface AlphaMetaData {
-  '1. Information': string
-  '2. Symbol': string
-  '3. Last Refreshed': string
-  '4. Interval': Interval
-  '5. Output Size': string
-  '6. Time Zone': string
-}
-
-// Define keys explicitly based on the Interval type
-interface AlphaStockData {
-  'Meta Data': AlphaMetaData
-  'Time Series (1min)': AlphaTimeSeriesData
-  'Time Series (5min)': AlphaTimeSeriesData
-  'Time Series (15min)': AlphaTimeSeriesData
-  'Time Series (30min)': AlphaTimeSeriesData
-  'Time Series (60min)': AlphaTimeSeriesData
-}
-
-interface AlphaTimeSeriesData {
-  [timestamp: string]: AlphaTimeSeriesEntry
-}
 
 const getTimeSeriesByInterval = (data: AlphaStockData, interval: Interval) => data[`Time Series (${interval})`]
 
