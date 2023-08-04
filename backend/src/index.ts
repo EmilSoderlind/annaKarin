@@ -1,5 +1,4 @@
 import { runAllDeciders } from './deciders'
-
 require('dotenv').config()
 
 const main = async () => {
